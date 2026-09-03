@@ -41,7 +41,7 @@ def search_human_biological_process_terms(
     limit: Annotated[
         int,
         Field(
-            description="Optional. Maximum number of matching rows to return. Default: 5.",
+            description="Optional. Maximum number of matching terms to return. Default: 5.",
             ge=1,
             le=20,
         ),
@@ -51,7 +51,8 @@ def search_human_biological_process_terms(
     Finds human Gene Ontology Biological Process terms whose descriptions match
     the supplied text.
 
-    Each match contains a STRING protein ID, GO ID, and term description.
+    Each match contains a GO ID and term description. Results are deduplicated
+    across STRING proteins.
     """
     print(
         "Tool search_human_biological_process_terms called with parameters: "
@@ -66,25 +67,32 @@ def search_human_biological_process_terms(
     if not HUMAN_BIOLOGICAL_PROCESS_TERMS.is_file():
         return {"error": "Human Biological Process term data is unavailable."}
 
-    matches = []
+    matches: set[tuple[str, str]] = set()
     more_matches = False
 
     with open(HUMAN_BIOLOGICAL_PROCESS_TERMS, encoding="utf-8") as term_file:
         for line in term_file:
-            description = line.rstrip().split("\t")[3]
+            _, _, go_id, description = line.rstrip().split("\t", maxsplit=3)
             if search_text.casefold() not in description.casefold():
                 continue
 
-            if len(matches) == limit:
+            match = (go_id, description)
+            if match in matches:
+                continue
+
+            if len(matches) >= limit:
                 more_matches = True
                 break
 
-            matches.append(line.rstrip())
+            matches.add(match)
 
     return {
         "query": search_text,
         "species": 9606,
-        "matches": matches,
+        "matches": [
+            {"go_id": go_id, "description": description}
+            for go_id, description in sorted(matches)
+        ],
         "more_matches": more_matches,
     }
 
